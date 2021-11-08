@@ -1,5 +1,5 @@
 /*
-Info Author
+Info Autho
 
 github : caliph91
 YouTube : caliph71
