@@ -15,23 +15,30 @@ let getText = require('../lib/fetcher').text
 let tahta = require('../lib/tahta')
 let tahta2 = require('../lib/tahta2')
 let axios = require('axios')
+let { whatanime } = require(`../lib/functions`)
 let brainly = require ('brainly-scraper')
 let ocr = require('../lib/ocr')
+let fetch = require('node-fetch')
+let bdr = require("rumus-bdr")
+let uploadFile = require("../lib/uploadFile")
 let {
-MessageType: mType
+MessageType: mType,
+GroupSettingChange: gcSet
 } = require('@adiwajshing/baileys')
 let { sticker, addExif } = require('../lib/sticker')
 let antidelete = JSON.parse(fs.readFileSync('./database/chat/antidelete.json').toString())
 let welcome = JSON.parse(fs.readFileSync('./database/chat/welcome.json').toString())
 let left = JSON.parse(fs.readFileSync('./database/chat/left.json').toString())
 let detect = JSON.parse(fs.readFileSync('./database/chat/detect.json').toString())
+let regist = JSON.parse(fs.readFileSync('./database/user/register.json').toString())
+let ban = JSON.parse(fs.readFileSync('./database/user/banned.json').toString())
 let { exec } = require("child_process")
 let { color } = require('../lib/color')
 let moment = require('moment')
 module.exports = async function connect(caliph, m) {
 try {
 if (m.isBaileys) return
-let groupMetadata = m.isGroup ? await caliph.groupMetadata(m.chat) : ''
+let groupMetadata = m.isGroup ? await caliph.groupMetadata(m.chat).catch(e => {}) : ''
 let groupMem = m.isGroup ? groupMetadata.participants : ''
 let groupAdm = m.isGroup ? groupMem.filter(a => a.isAdmin) : []
 let isBotAdm = m.isGroup ? groupMem.find(a => a.jid == caliph.user.jid).isAdmin : false
@@ -40,16 +47,27 @@ let budy = (typeof m.text == 'string' ? m.text : '')
 let body = budy
 let isVideo = (m.quoted ? m.quoted.mtype : m.mtype) == mType.video
 let isImage = (m.quoted ? m.quoted.mtype : m.mtype) == mType.image
+let isMedia = /image|video|sticker|audio/.test(m.quoted ? m.quoted.mtype : m.mtype)
 let args = body.trim().split(/ +/).slice(1)
+let isRegist = regist.includes(m.sender)
 let command = (budy.toLowerCase().split(/ +/)[0] || '')
-let prefix = /^[°•π÷×¶∆£¢€¥®™✓=|~`,*zxcv!?@#$%^&.\/\\©^]/.test(command) ? command.match(/^[°•π÷×¶∆£¢€¥®™✓=|~`,*zxcv!?@#$%^&.\/\\©^]/gi) : global.prefix
+let prefix = /^[°•π÷×¶∆£¢€¥®™✓=|`,*zxcv!?#$%^&.\/\\©^]/.test(command) ? command.match(/^[°•π÷×¶∆£¢€¥®™✓=|`,*zxcv!?#$%^&.\/\\©^]/gi) : global.prefix
 let isCmd = body.startsWith(prefix)
+let isBan = ban.includes(m.sender)
 let { ffmpeg } = require('../lib/converter')
 let isOwner = global.owner.includes(m.sender.split('@')[0]) || m.key.fromMe
 if (isCmd && !m.isGroup) {console.log(color('[EXEC]', 'cyan'), color(moment(m.messageTimestamp.low * 1000).format('DD/MM/YY HH:mm:ss'), 'yellow'), color(`${command} [${args.length}]`), 'from', color(caliph.getName(m.sender)))}
 if (isCmd && m.isGroup) {console.log(color('[EXEC]', 'cyan'), color(moment(m.messageTimestamp.low * 1000).format('DD/MM/YY HH:mm:ss'), 'yellow'), color(`${command} [${args.length}]`), 'from', color(caliph.getName(m.sender)), 'in', color(groupMetadata.subject))}
 let text = q = args.join(' ')
+if (isBan && !isOwner) return
+if (m.mentionedJid.includes(caliph.user.jid)) {
+// function kalo ngetag bakal ngirim stiker sendiri
+caliph.sendMessage(m.chat, { url: 'https://i.ibb.co/sFbdXfj/6984d8315885.webp' }, 'stickerMessage', { quoted: m, fileLength: 99999999999999 })
+} 
 
+if (body.toLowerCase().includes('assalamualaikum')) {
+caliph.reply(m.chat, `Waalaikumsalam kak ${caliph.getName(m.sender)}`, m)
+}
 /* Fake Reply */
 function freply(texts = fakereplyt, thumbnail = Buffer.alloc(0)) {
 return {key:{ fromMe:false, participant: `0@s.whatsapp.net`, ...(m.chat ? { remoteJid: `status@broadcast` } : {}) }, message: {
@@ -68,15 +86,34 @@ return {key:{ fromMe:false, participant: `0@s.whatsapp.net`, ...(m.chat ? { remo
 						"businessOwnerJid": "0@s.whatsapp.net"}}}
 }
 /* Ends Fake Reply */
+    if (!isRegist && isCmd && !command.includes('regist')) {
+    let buttons = [
+  {buttonId: '/regist', buttonText: {displayText: 'REGISTER'}, type: 1}
+]
+const buttonsMessage = {
+    contentText: `Maaf @${m.sender.split('@')[0]}, Kamu Belum Terdaftar Sebagai User Bot`.trim(),    
+footerText: `ketik .regist jika button tidak terlihat`,
+    buttons: buttons,
+    headerType: 1
+}
+const sendMsg = await caliph.prepareMessageFromContent(m.chat,{buttonsMessage},{ contextInfo: { mentionedJid: [m.sender] }, sendEphemeral: true})
+
+return caliph.relayWAMessage(sendMsg)
+}
 						 switch(command) {
 case prefix+'help': case prefix+'menu':
 caliph.updatePresence(m.chat, 'composing')
-var menu = `*WHATSAPP BOT*
+var menu = `WHATSAPP BOT
 
 Source code : https://clph.pw/m9oU
 Author : @caliph91
 Lib : Baileys
 Battery : ${caliph.battery ? caliph.battery.value +'%' : 'Belum kedetect'} ${caliph.battery ? caliph.battery.live ? '🔌 Charging...' : '⚡ Discharging' : ''}
+
+Main Menu 
+- ${prefix}blocklist
+- ${prefix}ping
+- ${prefix}owner 
 
 Group Menu
 - ${prefix}kick @tag/reply message
@@ -97,18 +134,24 @@ Owner Menu
 - ${prefix}join linkgroup
 - > JavaScript Code
 - => JavaScript Code
+- ~# (term Code)
 - ${prefix}public
 - ${prefix}self
+- ${prefix}ban @tag/reply message
+$ ${prefix}unban @tag/reply message
 
 Other Menu
 - ${prefix}toimg (reply sticker)
 - ${prefix}tahta (teks)
 - ${prefix}tahta2 (teks)
 - ${prefix}ttp (teks)
+- ${prefix}ttp2 (teks)
+- ${prefix}ttp3 (teks)
 - ${prefix}attp (teks)
 - ${prefix}attp2 (teks)
 - ${prefix}attp3 (teks)
 - ${prefix}sticker (reply image/video)
+- ${prefix}shortlink (url)
 
 Search Menu
 - ${prefix}pinterest (query)
@@ -132,16 +175,50 @@ Random Menu
 - ${prefix}ppcouple
 - ${prefix}loli
 - ${prefix}waifu
+- ${prefix}neko
 - ${prefix}katabijak
 - ${prefix}dare
 - ${prefix}truth
 - ${prefix}dadu 
 - ${prefix}lolivid
 
+Maker Menu
+- ${prefix}lolimaker (teks)
+- ${prefix}nekologo (teks|teks2)
+- ${prefix}sadboy (teks|teks2)
+- ${prefix}remlogo (teks)
+- ${prefix}kanekilogo (teks|teks2)
+
+Image Menu
+- ${prefix}flip (Reply/Kirim Gambar)
+- ${prefix}sepia (Reply/Kirim Gambar)
 `.trim()
 var img = fs.readFileSync(global.thumb)
 caliph.sendMessage(m.chat, img, mType.image, { quoted: freply('Rikka-Botz WhatsApp', img), caption: menu })
 break 
+case prefix+"flip":
+if (!isImage) throw `Kirim/Reply Gambar dengan perintah ${command}`
+buffer = await (m.quoted ? m.quoted : m).download()
+var { result } = await uploadFile(buffer)
+apinya = global.API("caliphAPI", "/api/img/flip", { url: result.url }, "apikey")
+buffer = await getBuffer(apinya)
+caliph.sendMessage(m.chat, buffer, mType.image, { quoted: m, caption: 'Nih kak dh jdi\nFollow : Instagram.com/caliph91_' })
+break
+case prefix+"sepia":
+if (!isImage) throw `Kirim/Reply Gambar dengan perintah ${command}`
+buffer = await (m.quoted ? m.quoted : m).download()
+var { result } = await uploadFile(buffer)
+apinya = global.API("caliphAPI", "/api/img/sepia", { url: result.url }, "apikey")
+buffer = await getBuffer(apinya)
+caliph.sendMessage(m.chat, buffer, mType.image, { quoted: m, caption: 'Nih kak dh jdi\nFollow : Instagram.com/caliph91_' })
+break
+case prefix+'upload':
+case prefix+'tourl':
+if (!isMedia) throw `Reply Media Dengan Perintah ${command}`
+buffer = await (m.quoted ? m.quoted : m).download()
+var { result } = await require('../lib/uploadFile')(buffer)
+m.reply(`SUCCESS\n\nURL : \`\`\`${result.url}\`\`\``)
+break
 case prefix+'ocr':
 case prefix+'imgtotext':
 case prefix+'img2text':
@@ -149,17 +226,109 @@ if (!isImage) throw `Reply Gambar Dengan Caption ${command} Untuk Menjadikan Gam
 med = m.quoted ? m.quoted.fakeObj : m
 dl = await caliph.downloadAndSaveMediaMessage(med)
 result = await ocr(dl)
-m.reply(`*IMAGE TO TEXT*:\n\nResult : \`\`\`${result}\`\`\``)
+m.reply(`IMAGE TO TEXT:\n\nResult : \`\`\`${result}\`\`\``)
+break
+case prefix+'wait':
+case prefix+'whatanime': 
+if (!isImage) throw `kirim screenshot dari scene anime yang ingin anda cari untuk menampilkan detail dari scene tersebut dengan caption ${command}`
+m.reply('Mohon tunggu sebentar...')
+buffer = await (m.quoted ? m.quoted : m).download()
+var { result } = await whatanime(buffer)
+caption = `WHAT ANIME IS THIS\n\nJudul : ${result.title.english}\nEpisode : ${result.episode}\nEcchi : ${result.similarity}\nTimestamp : ${result.timestamp}\nKemiripan : ${result.similarity}\nEcchi :  ${result.ecchi ? 'Ya' : 'Tidak'}`
+caliph.sendMessage(m.chat, { url: result.video }, mType.video, { quoted: m, caption })
+break
+case prefix+'listblock':
+case prefix+'blocklist':
+blok = caliph.blocklist.map(a => a.split('@')[0] + '@s.whatsapp.net')
+tex = 'Daftar Kontak Yang Diblokir :\n\n'
+nan = 0
+for (let i of blok) {
+nan += 1
+tex += `${nan}. @${i.split('@')[0]}\n`
+}
+caliph.sendMessage(m.chat, tex, mType.text, { quoted: m, contextInfo : { mentionedJid: blok }})
+break
+case prefix+'sider':
+if (!m.quoted) throw `Reply Chat Bot!`
+if (!m.quoted.fromMe) throw `Reply Chat Bot!`
+qtss = m.quoted
+responnya = `• LIST SIDER\n\n`
+result = (await caliph.messageInfo(qtss.chat, qtss.id)).reads
+for (let i of result) {
+responnya += `• wa.me/${i.jid.split('@')[0]}\n• ${require('moment-timezone')(i.t * 1000).tz('Asia/Jakarta').format('HH:mm:ss DD MMMM YYYY')}\n\n`
+}
+caliph.sendMessage(m.chat, responnya.trim(), mType.text, { quoted: m })
+break
+case prefix+'perkalian':
+case prefix+'kali':
+if (!text) throw `Contoh : ${command} 10×10`
+let [tekss, teksss] = text.split('×')
+if (!tekss) throw `Contoh : ${command} 10×10`
+if (!teksss) throw `Contoh : ${command} 10×10`
+result = bdr.rdb.perkalian(tekss, teksss)
+respon = `PERKALIAN\n
+Angka Perkalian : ${tekss}
+Jumlah Perkalian : ${teksss}
+
+RESULT
+
+\`\`\`${result}\`\`\`
+
+`.trim()
+m.reply(respon)
+break
+case prefix+'del':
+case prefix+'delete':
+if (!m.quoted) throw `Reply Pesannya Banh!`
+if (!m.quoted.fromMe) throw `Gbisa hpus pesan org lain!`
+m.quoted.delete()
 break
 case prefix+'lolivid':
 case prefix+'asupanloli':
-m.reply(`_*Tunggu permintaan anda sedang diproses..*_`)
+m.reply(`Tunggu permintaan anda sedang diproses..`)
 var url = global.API('caliphAPI', '/api/asupan/loli', {}, 'apikey')
 caliph.sendMessage(m.chat, { url }, mType.video, { quoted: m })
 break
+case prefix+'regist':
+if (isRegist) throw `Kamu Telah Daftar Sebelumnya!`
+link = `https://wa.me/${caliph.user.jid.split('@')[0]}?text=.unregist ${m.sender.split('@')[0]}`
+shortlink = await getJson(`https://clph.pw/create.php?url=${encodeURIComponent(link)}`)
+ingfo = `╭─ 「 REGISTER 」
+│ Nama: ${caliph.getName(m.sender)}
+│ Bio: ${(await caliph.getStatus(m.sender)).status}
+│ API: wa.me/${m.sender.split('@')[0]}
+│ UNREG: ${shortlink.result.url}
+╰────`.trim()
+regist.push(m.sender)
+fs.writeFileSync('./database/user/register.json', JSON.stringify(regist, null, 2))
+ppget = await caliph.getProfilePicture(m.sender).catch(() => 'https://storage.caliph71.xyz/img/itsuki.jpg')
+caliph.sendMessage(m.chat, { url: ppget }, mType.image, { quoted: m, caption: ingfo })
+break
+case prefix+'unregist':
+if (!isRegist) throw `Kamu Belum Terdaftar!`
+if (!args[0]) return
+if (args[0] !== m.sender.split('@')[0]) throw `Nomor Tidak valid!` 
+tempat = regist.indexOf(m.sender)
+regist.splice(tempat, 1)
+fs.writeFileSync('./database/user/register.json', JSON.stringify(regist, null, 2))
+m.reply(`Unreg Berhasil...`)
+break
 case prefix+'waifu':
-m.reply(`_*Tunggu permintaan anda sedang diproses..*_`)
-var url = global.API('caliphAPI', '/api/waifu', {}, 'apikey')
+m.reply(`Tunggu permintaan anda sedang diproses..`)
+var waifu = global.API('https://api.waifu.pics', '/sfw/waifu')
+var { url } = await getJson(waifu)
+caliph.sendMessage(m.chat, { url }, mType.image, { quoted: m , caption: 'Larii Ada Wibu...'})
+break
+case prefix+'setpref':
+if (!isOwner) return
+if (!text) return 
+global.prefix = args[0]
+m.reply(`\`\`\`PREFIX : ${args[0]}\`\`\``)
+break
+case prefix+'neko':
+m.reply(`Tunggu permintaan anda sedang diproses..`)
+var waifu = global.API('https://api.waifu.pics', '/sfw/neko')
+var { url } = await getJson(waifu)
 caliph.sendMessage(m.chat, { url }, mType.image, { quoted: m , caption: 'Larii Ada Wibu...'})
 break
 case prefix+'public':
@@ -172,10 +341,49 @@ if (!isOwner) throw `Perintah Ini Khusus Owner Bot!`
 global.selfmode = true
 m.reply(`\`\`\`STATUS : SELF\`\`\``)
 break
+case prefix+'nulis':
+if (!text) throw `Teksnya ko gada mhank?`
+var { result } = await getJson(`https://pythonapis.clph.me/api/nulis?text=${encodeURIComponent(text)}`)
+caliph.sendMessage(m.chat, { url: result }, mType.image, { quoted: m, fileLength: 999999999999999, caption: 'Neh mhank. Dah Jadi Ni...' })
+break
 case prefix+'loli':
-m.reply(`_*Tunggu permintaan anda sedang diproses..*_`)
+m.reply(`Tunggu permintaan anda sedang diproses..`)
 var url = global.API('caliphAPI', '/api/loli', {}, 'apikey')
 caliph.sendMessage(m.chat, { url }, mType.image, { quoted: m , caption: 'Lolinya banh...'})
+break
+case prefix+'lolimaker':
+if (!text) throw `Teksnya manaaa??`
+apii = global.API('caliphAPI', '/api/lolimaker', { text }, 'apikey')
+buffer = await getBuffer(apii)
+caliph.sendMessage(m.chat, buffer, 'imageMessage', { quoted: m, caption: 'Neh banh lolinya :v' })
+break
+case prefix+'remlogo':
+if (!text) throw `Teksnya manaaa??`
+apii = global.API('caliphAPI', '/api/rem', { text }, 'apikey')
+buffer = await getBuffer(apii)
+caliph.sendMessage(m.chat, buffer, 'imageMessage', { quoted: m, caption: 'Neh banh logo remnya :v' })
+break
+case prefix+'kanekilogo':
+case prefix+'kanekimaker':
+if (!text) throw `Teksnya manaaa??`
+apii = global.API('caliphAPI', '/api/kaneki', { text }, 'apikey')
+buffer = await getBuffer(apii)
+caliph.sendMessage(m.chat, buffer, 'imageMessage', { quoted: m, caption: 'Neh banh logo kanekinya :v' })
+break
+case prefix+'sadboy':
+if (!text) throw `Teksnya manaaa??\nContoh : ${command} caliph|ganz`
+var [tek, tek2] = text.split('|')
+apii = global.API('caliphAPI', '/api/sadboy', { text: tek, text2: tek2 }, 'apikey')
+buffer = await getBuffer(apii)
+caliph.sendMessage(m.chat, buffer, 'imageMessage', { quoted: m, caption: 'Jgn ngesad mulu lh bng :(' })
+break
+case prefix+'nekologo':
+case prefix+'nekomaker':
+if (!text) throw `Teksnya manaaa??\nContoh : ${command} caliph|ganz`
+var [tek, tek2] = text.split('|')
+apii = global.API('caliphAPI', '/api/girlneko', { text: tek, text2: tek2 }, 'apikey')
+buffer = await getBuffer(apii)
+caliph.sendMessage(m.chat, buffer, 'imageMessage', { quoted: m, caption: 'Neh banh logo nekonya :v' })
 break
 case prefix+'setthumb':
 if (!isOwner) return
@@ -198,6 +406,53 @@ fs.unlinkSync(media)
 fs.unlinkSync(`./tmp/${det}.mp3`)
 })
 break
+case prefix+'setgc':
+case prefix+'setgroup':
+case prefix+'group':
+guide = `List Option : \n- tutup / close\n- buka / open\n- subject <string>\n- desc <string>\n- revoke / reset\n- picture / profile\n\n Example :\n${command} close`
+if (!args[0]) throw guide
+switch (args[0]) {
+case 'open':
+case 'buka': 
+ await caliph.groupSettingChange(m.chat, gcSet.messageSend, false)
+ m.reply('Sukses Membuka Grup...')
+	break
+	case 'close':
+	case 'tutup':
+	await caliph.groupSettingChange(m.chat, gcSet.messageSend, true)
+ m.reply('Sukses Menutup Grup...')
+  break
+    case 'subject':
+    if (args.length == 1) return m.reply(`Example : ${command} ${args[0]} BOT WA`)
+    await caliph.groupUpdateSubject(m['chat'], args.slice(1).join(' '))
+    m.reply(`\`\`\`Sukses Mengganti Nama Grup Menjadi : ${args.slice(1).join(' ')}\`\`\``)
+     break
+     case 'revoke':
+     case 'reset':
+   await caliph.revokeInvite(m.chat)
+   m.reply(`\`\`\`Sukses Mereset Undangan Grup ${groupMetadata.subject}\`\`\``)
+      break
+      case 'desc':
+      if (args.length == 1) return m.reply(`Example : ${command} ${args[0]} BOT WA`)
+      await caliph.groupUpdateDescription(m.chat, args.slice(1).join(' '))
+      m.reply(`\`\`\`Sukses merubah deskripsi grup ${groupMetadata.subject}\`\`\``)
+      break
+    case 'profile':
+     case 'picture':
+     case 'pp':
+	 q = m.quoted ? m.quoted : m
+    mime = (q.msg || q).mimetype || ''
+  if (!mime) return m.reply('Tidak ada foto')
+  if (!/image\/(jpe?g|png)/.test(mime)) return m.reply(`Mime ${mime} tidak support`)
+  ah = await q.download()
+  await caliph.updateProfilePicture(m.chat, ah)
+  caliph.sendMessage(m.chat, ah, mType.image, { quoted: m, caption: 'Sukses Mengganti Profile Grup...', fileLength: 999999999999999 })
+  break
+
+      default: 
+      m.reply(guide)
+      }
+break
 case prefix+'calc':
 caliph.updatePresence(m.chat, 'composing')
 if (!text) return m.reply(`Teksnya Mana ajg!!!`)
@@ -219,7 +474,7 @@ var val = text
 
 result = require('mathjs').evaluate(val)
 
-m.reply(`_${formats}_ = ${result}`)
+m.reply(`${formats} = ${result}`)
 break
 case prefix+'ping': 
 old = new Date
@@ -259,12 +514,46 @@ m.reply('Mohon tunggu sebentar~')
 var url = await require('../lib/webp2mp4').webp2mp4(await m.quoted.download())
 caliph.sendMessage(m.chat, { url }, 'videoMessage', { caption: `Sukses~`, mimetype: 'video/gif', quoted: m })
 break
+case prefix+'shortlink':
+case prefix+'shorturl':
+if (!text) throw `linknya mana??`
+var { url, delete: del } = (await getJson('https://clph.pw/create.php?url='+encodeURIComponent(text))).result
+response = `SHORT URL\n
+Original Url : \`\`\`${text}\`\`\`
+
+==================================
+
+Short Url : \`\`\`${url}\`\`\`
+
+==================================
+
+Delete URL : Udh Dikirim Di Private Chat :)
+`.trim()
+m.reply(response)
+caliph.reply(m.sender, `DELETE URL\n\n\`\`\`${del}\`\`\`\n\nNote : Jika Url Dihapus, Maka Short Link Anda Tidak Bisa Di Akses..`, m)
+break
+case prefix+'getsesi':
+if (m.isGroup) throw `Private Chat Aja Banh Biar aman :)`
+if (!isOwner) throw `Affkh kmu owner?`
+await m.reply('Nih Banh Session Botnya :)')
+baffer = fs.readFileSync(global.authfile)
+await caliph.sendMessage(m.chat, baffer, mType.document, { filename: 'session.json', mimetype: 'application/json' })
+await caliph.reply(m.chat, 'Nih versi teksnya...')
+caliph.reply(m.chat, baffer.toString())
+break 
+case prefix+'base64':
+qts = m.quoted ? m.quoted.text : text
+if (!qts) throw `Teksnya Mana banh?`
+str = Buffer.from(qts, 'utf-8')
+await m.reply('Nih banh..')
+m.reply(str.toString('base64'))
+break
 case prefix+'tovideo':
 case prefix+'tovid':
 case prefix+'tomp4':
 if (!m.quoted) throw 'Reply Stiker/video Yang ingin dijadikan video!'
 if (m.quoted.mtype == mType.audio) {
-m.reply('```Tunggu bentar...```')
+m.reply('Tunggu bentar...')
 media = await ffmpeg(await m.quoted.download(), [
             '-filter_complex', 'color',
             '-pix_fmt', 'yuv420p',
@@ -275,7 +564,7 @@ media = await ffmpeg(await m.quoted.download(), [
 
 caliph.sendMessage(m.chat, media, mType.video, { quoted: m, caption: `Sukses~` })
 } else if (m.quoted.mtype == mType.sticker && m.quoted.isAnimated) {
-m.reply('```Tunggu bentar```')
+m.reply('Tunggu bentar')
 var url = await require('../lib/webp2mp4').webp2mp4(await m.quoted.download())
 caliph.sendMessage(m.chat, { url }, 'videoMessage', { caption: `Sukses~`, mimetype: 'video/mp4', quoted: m })
 } else throw 'Reply Stiker/Audio Yang Mau dijadiin video!'
@@ -299,10 +588,10 @@ m.reply(random)
 break
 case prefix+'brainly':
 if (!q) return m.reply('Soalnya?')
-m.reply('*_Tunggu permintaan anda sedang diproses..._*')
+m.reply('Tunggu permintaan anda sedang diproses...')
 brainly(q, 10)
 .then(async bren => {
- teks = '*「 _BRAINLY_ 」*\n\n'
+ teks = '「 BRAINLY 」\n\n'
 
 	no = 0
    for (let data of bren.data) {
@@ -316,16 +605,16 @@ break
 case prefix+'pinterest':
 case prefix+'pin':
 if (!q) throw `Cari apa?`
-m.reply('_*Tunggu permintaan anda sedang diproses...*_')
+m.reply('Tunggu permintaan anda sedang diproses...')
 var { result } = await getJson(global.API('caliphAPI', '/api/pinterest', { q }, 'apikey'))
 caliph.sendMessage(m.chat, { url: result[Math.floor(Math.random() * result.length)] }, mType.image, { quoted: m, caption: `Hasil pencarian : ${q}` })
 break
 case prefix+'wiki':
 case prefix+'wikipedia':
 if (!q) return m.reply(`Contoh Penggunaan\n${prefix}wiki google`)
-m.reply(`_*Tunggu permintaan anda sedang diproses..._*`)
+m.reply(`*Tunggu permintaan anda sedang diproses...*`)
 result = await require('wikijs').default({ apiUrl: 'https://id.wikipedia.org/w/api.php' }).page(text).then(page => page.rawContent())
-hasil = `*${text}*\n\n${result}`.trim()
+hasil = `${text}\n\n${result}`.trim()
 m.reply(hasil)
 break
 case prefix+'darkjokes':
@@ -369,7 +658,7 @@ m.reply(util.format(e))
 break
 case prefix+'sc': 
 case prefix+'script':
-m.reply(`Bot ini menggunakan script :\nhttps://github.com/caliph91/bot-whatsapp`)
+m.reply(`Bot ini menggunakan script :\nhttps://github.com/naufal132/bot-whatsapp`)
 break
 case prefix+'kick': 
 if (!m.isGroup) return m.reply('Perintah ini khusus didalam grup!')
@@ -385,9 +674,9 @@ case prefix+'bcgc':
 if (!isOwner) return m.reply('Perintah ini khusus Owner bot!')
 if (!args[0]) return m.reply('Teksnya mana amsu!')
 var chats = caliph.chats.all().filter(v => v.jid.endsWith('g.us') && !v.read_only && v.message && !v.announce).map(v => v.jid)
-  var content = await caliph.cMod(m.chat, m, /bc|broadcast/i.test(text) ? text : text + '\n' + '' + '*「 BROADCAST 」*')
+  var content = await caliph.cMod(m.chat, m, /bc|broadcast/i.test(text) ? text : text + '\n' + '' + '「 BROADCAST 」')
   for (let id of chats) await caliph.copyNForward(id, content, true)
-  caliph.reply(m.chat, `_Mengirim pesan broadcast ke ${chats.length} group_`, m)
+  caliph.reply(m.chat, `Mengirim pesan broadcast ke ${chats.length} group`, m)
 break
 case prefix+'promote': 
 if (!m.isGroup) return m.reply('Perintah ini khusus didalam grup!')
@@ -414,14 +703,14 @@ break
 case prefix+'tahta':
 case prefix+'hartatahta':
 if (!args[0]) return m.reply('Teksnya?')
-m.reply(`_*Tunggu permintaan anda sedang diproses....*_`)
+m.reply(`Tunggu permintaan anda sedang diproses....`)
 var hasil = global.support.magick || global.support.convert ? await tahta(q) : await getBuffer(global.API('zeks', '/api/hartatahta', { text }, 'apikey'))
 caliph.sendMessage(m.chat, hasil, 'imageMessage', { quoted: m, caption: 'Harta Tahta '+args.join(' ') })
 break
 case prefix+'tahta2':
 case prefix+'hartatahta2':
 if (!args[0]) return m.reply('Teksnya?')
-m.reply(`_*Tunggu permintaan anda sedang diproses....*_`)
+m.reply(`Tunggu permintaan anda sedang diproses....`)
 var hasil = global.support.magick || global.support.convert ? await tahta2(q) : await getBuffer(global.API('zeks', '/api/hartatahta', { text }, 'apikey'))
 caliph.sendMessage(m.chat, hasil, 'imageMessage', { quoted: m, caption: 'Harta Tahta '+args.join(' ') })
 break
@@ -433,23 +722,33 @@ case prefix+'stikergif':
 case prefix+'stickergif':
 if (args[0] && /https?:\/\//.test(args[0])) return caliph.sendSticker(m.chat, args[0], m, { packname, author })
 json = m.quoted ? m.quoted : m
-if (!/image|video/.test(json.mtype)) return m.reply(`Balas Video/Gambar dengan caption *${prefix + command}*!`)
+if (!/image|video/.test(json.mtype)) return m.reply(`Balas Video/Gambar dengan caption ${prefix + command}!`)
 caliph.sendSticker(m.chat, await json.download(), m, { packname, author })
 break
 case prefix+'ttp':
   if (!args[0]) return m.reply('Teksnya?')
   caliph.sendSticker(m.chat, global.API('xteam', '/ttp', { text, file: '' }, 'APIKEY'), m, { packname, author })
   break
+  case prefix+'ttp2':
+  if (!args[0]) return m.reply('Teksnya?')
+  caliph.sendSticker(m.chat, global.API('lol', '/api/ttp', { text }, 'apikey'), m, { packname, author })
+  break
+  case prefix+'ttp3':
+  if (!args[0]) return m.reply('Teksnya?')
+   listwarna = ["red", "green", "blue", "purple", "cyan", "yellow", "white"]
+   warna = listwarna[Math.floor(Math.random() * listwarna.length)]
+  caliph.sendSticker(m.chat, global.API('vh', '/textmaker', { text, warna }, 'apikey'), m, { packname, author })
+  break
   case prefix+'attp':
   if (!args[0]) return m.reply('Teksnya?')
   buffer = await getBuffer(global.API('lol', '/api/attp', { text }, 'apikey'))
-  webp = await addExif(buffer, packname, author, ["😀", "😆", "🙂"])
+  webp = await addExif(buffer, packname, author)
   caliph.sendMessage(m.chat, webp, mType.sticker, { quoted: m })
   break
   case prefix+'attp2':
   if (!args[0]) return m.reply('Teksnya?')
   buffer = await getBuffer(global.API('xteam', '/attp', { text, file:''}, 'APIKEY'))
-  webp = await addExif(buffer, packname, author, ["😀", "😆", "🙂"])
+  webp = await addExif(buffer, packname, author)
   caliph.sendMessage(m.chat, webp, mType.sticker, { quoted: m })
   break 
   case prefix+'attp3':
@@ -482,19 +781,19 @@ if (!args[0]) {
 const buttonsMessage = {
     contentText: `Pilih Enable atau Disable
 `.trim(),    
-footerText: `🔰 ${caliph.user.name} By Caliph71🔰`,
+footerText: `🔰 ${caliph.user.name} By Ridho🔰`,
     buttons: buttons,
     headerType: 1
 }
 const sendMsg = await caliph.prepareMessageFromContent(m.chat,{buttonsMessage},{ contextInfo: { mentionedJid: [] }, sendEphemeral: true})
 
 caliph.relayWAMessage(sendMsg)
-} else if (args[0].toLowerCase() == 'enable') {
+} else if (/on|enable/gi.test(args[0])) {
 if (antidelete.includes(m.chat)) return m.reply('Antidelete Telah Diaktifkan Sebelumnya')
 antidelete.push(m.chat) 
 fs.writeFileSync('./database/chat/antidelete.json', JSON.stringify(antidelete, null, 2))
 m.reply('Sukses mengaktifkan antidelete di grup ini....')
-} else if (args[0].toLowerCase() == 'disable') {
+} else if (/off|disable/gi.test(args[0])) {
 index = antidelete.indexOf(m.chat)
 antidelete.splice(index, 1) 
 m.reply('Sukses menonaktifkan antidelete di grup ini....')
@@ -512,7 +811,7 @@ if (!args[0]) {
 const buttonsMessage = {
     contentText: `Pilih Enable atau Disable
 `.trim(),    
-footerText: `🔰 ${caliph.user.name} By Caliph71🔰`,
+footerText: `🔰 ${caliph.user.name} By Ridho🔰`,
     buttons: buttons,
     headerType: 1
 }
@@ -542,7 +841,7 @@ if (!args[0]) {
 const buttonsMessage = {
     contentText: `Pilih Enable atau Disable
 `.trim(),    
-footerText: `🔰 ${caliph.user.name} By Caliph71🔰`,
+footerText: `🔰 ${caliph.user.name} By Ridho🔰`,
     buttons: buttons,
     headerType: 1
 }
@@ -564,11 +863,11 @@ break
 case prefix+'hidetag': 
 if (!m.isGroup) return m.reply('Perintah ini khusus didalam grup!')
 if (!isAdmin) return m.reply('Perintah ini khusus admin grup!')
-let users = groupMem.map(u => u.jid)
+users = groupMem.map(u => u.jid)
 
-  let qz = m.quoted ? m.quoted : m
-  let c = m.quoted ? m.quoted : m.msg
-  let msg = caliph.cMod(
+  qz = m.quoted ? m.quoted : m
+  c = m.quoted ? m.quoted : m.msg
+  msgs = caliph.cMod(
     m.chat,
     caliph.prepareMessageFromContent(
       m.chat,
@@ -584,7 +883,31 @@ let users = groupMem.map(u => u.jid)
     ),
     text || qz.text 
   )
-  await caliph.relayWAMessage(msg)
+  await caliph.relayWAMessage(msgs)
+break
+case prefix+'ohidetag': 
+if (!m.isGroup) return m.reply('Perintah ini khusus didalam grup!')
+if (!isOwner) return m.reply('Perintah ini khusus admin grup!')
+users = groupMem.map(u => u.jid)
+
+  qz = m.quoted ? m.quoted : m
+  c = m.quoted ? m.quoted : m.msg
+  msgss = caliph.cMod(
+    m.chat,
+    caliph.prepareMessageFromContent(
+      m.chat,
+      { [c.toJSON ? qz.mtype : mType.extendedText]: c.toJSON ? c.toJSON() : {
+        text: c || ''
+      } },
+      {
+        contextInfo: {
+          mentionedJid: users
+        },
+      }
+    ),
+    text || qz.text 
+  )
+  await caliph.relayWAMessage(msgss)
 break
 case prefix+'linkgc': 
 case prefix+'linkgrup': 
@@ -595,7 +918,7 @@ case prefix+'gruplink':
 if (!m.isGroup) return m.reply('Perintah ini khusus didalam grup!')
 //if (!isAdmin) return m.reply('Perintah ini khusus admin grup!')
 if (!isBotAdm) return m.reply('Jadikan bot sebagai Admin terlebih dahulu')
-caliph.sendMessage(m.chat, `https://chat.whatsapp.com/${await caliph.groupInviteCode(m.chat)}\n\nLink Grup *${groupMetadata.subject}*`, 'conversation', { detectLinks: false, quoted: m})
+caliph.sendMessage(m.chat, `https://chat.whatsapp.com/${await caliph.groupInviteCode(m.chat)}\n\nLink Grup ${groupMetadata.subject}`, 'conversation', { detectLinks: false, quoted: m})
 break
 case prefix+'demote': 
 if (!m.isGroup) return m.reply('Perintah ini khusus didalam grup!')
@@ -655,36 +978,94 @@ isQuod.map(a => {
 caliph.blockUser(a, 'remove').catch(() => {})
 })
 break
+case prefix+'ban': 
+if (!isOwner) throw `Situ Owner??`
+isQuod = m.quoted ? [m.quoted.sender] : m.mentionedJid
+if (!isQuod[0]) return m.reply('Tag member yang ingin di ban!')
+isQuod.map(a => {
+if (!ban.includes(a)) ban.push(a)
+})
+await caliph.sendMessage(m.chat, `Sukses Banned Nomor : ${isQuod.map(a => a.split('@')[0]).join(', ')}`, mType.text, { quoted: m })
+fs.writeFileSync('./database/user/banned.json', JSON.stringify(ban, null, 2))
+break
+case prefix+'unban': 
+if (!isOwner) throw `Situ Owner??`
+isQuod = m.quoted ? [m.quoted.sender] : m.mentionedJid
+if (!isQuod[0]) return m.reply('Tag member yang ingin di unban!')
+isQuod.map(a => {
+if (ban.includes(a)) {
+num = ban.indexOf(a)
+ban.splice(num, 1)
+}
+})
+await caliph.sendMessage(m.chat, `Sukses Menghapus Banned Nomor : ${isQuod.map(a => a.split('@')[0]).join(', ')}`, mType.text, { quoted: m })
+fs.writeFileSync('./database/user/banned.json', JSON.stringify(ban, null, 2))
+break
 case prefix+'add': 
 if (!m.isGroup) return m.reply('Perintah ini khusus didalam grup!')
 if (!isAdmin) return m.reply('Perintah ini khusus admin grup!')
 if (!isBotAdm) return m.reply('Jadikan bot sebagai admin terlebih dahulu!')
 isQuod = m.quoted ? [m.quoted.sender] : text.split(',').map(v => v.replace(/[^0-9]/gi, '') +'@s.whatsapp.net')
-if (!isQuod[0]) return m.reply(`Siapa Yang Mau Di Add?`)
-caliph.groupAdd(m.chat, isQuod)
+if (isQuod.length == 0) return m.reply(`Siapa Yang Mau Di Add?`)
+_participants = groupMem.map(user => user.jid)
+  users = (await Promise.all(
+    isQuod
+      .map(v => v.replace(/[^0-9]/g, ''))
+      .filter(v => v.length > 4 && v.length < 20 && !_participants.includes(v + '@s.whatsapp.net'))
+      .map(async v => [
+        v,
+        await caliph.isOnWhatsApp(v + '@s.whatsapp.net')
+      ])
+  )).filter(v => v[1]).map(v => v[0] + '@c.us')
+  response = await caliph.groupAdd(m.chat, users)
+  pp = await caliph.getProfilePicture(m.chat).catch(_ => `https://storage.caliph71.xyz/img/404.jpg`)
+  jpegThumbnail = pp ? await (await fetch(pp)).buffer() : false
+  for (let user of response.participants.filter(user => Object.values(user)[0].code == 403)) {
+    var [[jid, {
+      invite_code,
+      invite_code_exp
+    }]] = Object.entries(user)
+    teks = `Mengundang @${jid.split('@')[0]} menggunakan undangan grup...`
+    m.reply(teks, null, {
+      contextInfo: {
+        mentionedJid: caliph.parseMention(teks)
+      }
+    })
+    await caliph.sendGroupV4Invite(m.chat, jid, invite_code, invite_code_exp, false, 'Invitation to join my WhatsApp group', jpegThumbnail ? {
+      jpegThumbnail
+    } : {})
+  }
 break
 case prefix+'owner': 
 case prefix+'creator':
 if(owner.length == 1) return caliph.sendContact(m.chat, owner[0], caliph.getName(owner[0] + '@s.whatsapp.net'), m)
 caliph.sendContactArray(m.chat, owner.map(a => a + '@s.whatsapp.net'),{ quoted: m })
 break
-case '$':
+case '~#':
 if (!text) return
 if (!isOwner) throw `Perintah Ini Khusus Owner Bot Ya ajg!!!!`
-m.reply('```Executing...```')
+m.reply('Executing...')
 exec(text, async (e, q, s) => {
 if (e) return m.reply(util.format(e), null, { detectLinks: false })
 if (q) m.reply(util.format(q), null, { detectLinks: false })
 if (s) m.reply(util.format(s), null, { detectLinks: false })
 })
 break
+							 case prefix+"update":
+if (!isOwner) throw `Perintah Ini Khusus Owner Bot Ya ajg!!!!`
+exec('git pull', (e, q, s) => {
+if (e) return m.reply(util.format(e), null, { detectLinks: false })
+if (q) m.reply(util.format(q), null, { detectLinks: false })
+if (s) m.reply(util.format(s), null, { detectLinks: false })
+})
+break
 default: 
-//if (isCmd) m.reply(`Command *${command}* not found`)
+if (isCmd && (command.length == 1) == false) m.reply(`Command ${command} not found`)
 }
 
 } catch (e) {
 //caliph.reply(m.chat, 'Ada Yang Error!', m)
-m.reply(util.format(e.message ? e.message : e))
+m.reply(util.format(e.message ? `Error : `+e.message : e))
 }
 }
 let file = require.resolve(__filename)
